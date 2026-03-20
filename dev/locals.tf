@@ -1,4 +1,4 @@
 locals {
   project = "study"
-  env = "dev"
+  env     = "dev"
 }
