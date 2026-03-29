@@ -1,19 +1,4 @@
 # -----------------------------------
-# S3
-# -----------------------------------
-resource "aws_s3_bucket" "content" {
-  force_destroy = true
-  bucket        = "${local.project}-${local.env}-content-bucket-${data.aws_caller_identity.self.account_id}"
-}
-
-resource "aws_s3_bucket" "web" {
-  force_destroy = true
-  bucket        = "${local.project}-${local.env}-web-bucket-${data.aws_caller_identity.self.account_id}"
-
-}
-
-
-# -----------------------------------
 # DynamoDB
 # -----------------------------------
 resource "aws_dynamodb_table" "album" {

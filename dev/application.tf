@@ -29,7 +29,7 @@ resource "aws_iam_role_policy" "lambda_access_policy" {
           "S3:PutObject"
         ]
         Effect   = "Allow"
-        Resource = "arn:aws:s3:::${aws_s3_bucket.content.bucket}/*"
+        Resource = "arn:aws:s3:::${aws_s3_bucket.web.bucket}/*"
       },
       {
         Action = [
@@ -71,7 +71,7 @@ resource "aws_lambda_function" "create_url_lambda" {
   role             = aws_iam_role.lambda.arn
   environment {
     variables = {
-      "BUCKET_NAME" = aws_s3_bucket.content.bucket
+      "BUCKET_NAME" = aws_s3_bucket.web.bucket
     }
   }
 }
@@ -151,4 +151,115 @@ resource "aws_apigatewayv2_stage" "main" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+}
+
+# -----------------------------------
+# S3
+# -----------------------------------
+
+# S3 Bucket
+resource "aws_s3_bucket" "web" {
+  force_destroy = true
+  bucket        = "${local.project}-${local.env}-web-bucket-${data.aws_caller_identity.self.account_id}"
+
+}
+
+
+# Bucket Policy
+data "aws_iam_policy_document" "web_bucket_security" {
+  statement {
+    effect = "Deny"
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.web.arn,
+      "${aws_s3_bucket.web.arn}/*"
+    ]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "web_bucket_cloudfront_access" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+    actions = ["s3:GetObject"]
+    resources = [
+      "${aws_s3_bucket.web.arn}/*"
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.main.arn]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "web_bucket_policy" {
+  override_policy_documents = [
+    data.aws_iam_policy_document.web_bucket_security.json,
+    data.aws_iam_policy_document.web_bucket_cloudfront_access.json
+  ]
+}
+
+resource "aws_s3_bucket_policy" "web_bucket" {
+  bucket = aws_s3_bucket.web.id
+  policy = data.aws_iam_policy_document.web_bucket_policy.json
+}
+
+# -----------------------------------
+# CloudFront
+# -----------------------------------
+resource "aws_cloudfront_origin_access_control" "main" {
+  name                              = "web-s3-oac"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
+
+resource "aws_cloudfront_distribution" "main" {
+  origin {
+    domain_name              = aws_s3_bucket.web.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.main.id
+    origin_id                = local.origin_id
+  }
+
+  default_cache_behavior {
+    target_origin_id       = local.origin_id
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    viewer_protocol_policy = "redirect-to-https"
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  enabled             = true
+  is_ipv6_enabled     = false
+  price_class         = "PriceClass_200"
+  default_root_object = "index.html"
+
 }
