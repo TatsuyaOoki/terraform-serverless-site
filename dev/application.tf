@@ -164,14 +164,6 @@ resource "aws_s3_bucket" "web" {
 
 }
 
-# S3 Bucket Object
-resource "aws_s3_object" "index" {
-  bucket       = aws_s3_bucket.web.id
-  key          = "index.html"
-  source       = "data/s3/index.html"
-  etag         = filemd5("data/s3/index.html")
-  content_type = "text/html"
-}
 
 # Bucket Policy
 data "aws_iam_policy_document" "web_bucket_security" {
